@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0">
     <title>도담동 습도</title>
     <style>
         :root { 
@@ -25,9 +25,12 @@
         input { 
             flex: 1; min-width: 80px; padding: 12px; 
             border: 1px solid var(--border); border-radius: 8px; 
-            font-size: 0.95rem; text-align: center;
+            font-size: 16px; text-align: center;
+            -moz-appearance: textfield;
         }
-        input::placeholder { text-align: center; }
+        input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+        input::placeholder { text-align: center; font-size: 0.95rem; }
+        
         button { flex: 0.6; min-width: 70px; padding: 12px; background: var(--accent); color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 1rem; }
 
         #results-area { display: none; }
@@ -43,6 +46,7 @@
         #outdoor-table td { text-align: center; }
         .cell-center { text-align: center; }
         .cell-left { text-align: left; padding-left: 5px; }
+        
         .val-num { font-weight: 700; font-variant-numeric: tabular-nums; }
 
         .bar-outer { 
@@ -70,14 +74,14 @@
     <div class="header">
         <h2>도담동 습도</h2>
         <div class="header-info">
-            <span class="version">v0.1.0</span>
+            <span class="version">v0.1.1</span>
             <div id="update-time" class="timestamp">READY</div>
         </div>
     </div>
 
     <div class="input-section">
-        <input type="number" id="manual-temp" step="0.1" placeholder="온도">
-        <input type="number" id="manual-humid" step="1" placeholder="습도">
+        <input type="number" id="manual-temp" step="0.1" inputmode="decimal" placeholder="온도">
+        <input type="number" id="manual-humid" step="1" inputmode="numeric" placeholder="습도">
         <button onclick="startCalculation()">시작</button>
     </div>
 
@@ -106,7 +110,8 @@
                     <col style="width: 45px;">
                     <col style="width: auto;">
                     <col style="width: 45px;">
-                    <col id="col-manual-width" style="width: 20px;"> </colgroup>
+                    <col id="col-manual-width" style="width: 20px;">
+                </colgroup>
                 <thead>
                     <tr><th>온도</th><th colspan="4">예상 상대 습도</th></tr>
                 </thead>
@@ -124,8 +129,15 @@
         log.style.display = 'block';
         const entry = document.createElement('div');
         entry.className = type ? 'log-'+type : '';
-        entry.innerText = `[${new Date().toLocaleTimeString()}] ${msg}`;
+        entry.innerText = `[${getTime24()}] ${msg}`;
         log.prepend(entry);
+    }
+
+    function getTime24() {
+        const now = new Date();
+        return now.getHours().toString().padStart(2, '0') + ':' + 
+               now.getMinutes().toString().padStart(2, '0') + ':' + 
+               now.getSeconds().toString().padStart(2, '0');
     }
 
     function getAH(T, RH) {
@@ -164,32 +176,32 @@
         const hasM = !isNaN(mTemp) && !isNaN(mHumid);
         tIn.value = ''; hIn.value = '';
         
-        // 단위 열 폭 상향 조절
         document.getElementById('col-manual-width').style.width = hasM ? "65px" : "20px";
 
         const outBody = document.querySelector('#outdoor-table tbody'), inBody = document.getElementById('indoor-table-body');
         outBody.innerHTML = ''; inBody.innerHTML = '';
         document.getElementById('results-area').style.display = 'block';
         
-        addLog("기상 분석 프로세스 시작...", "info");
+        addLog("기상 분석 프로세스 개시...", "info");
         let results = [], manualAH = null;
         if(hasM) {
             manualAH = getAH(mTemp, mHumid);
             results.push({ name: "수동", t: mTemp, rh: mHumid, ah: manualAH });
-            addLog(`수동 측정값 로드: ${mTemp}°C / ${mHumid}%`, "success");
+            addLog(`수동 실측 데이터 분석 성공: ${mTemp}°C / ${mHumid}%`, "success");
         }
 
         const sources = [{name:"종합 최적값", model:"best_match"},{name:"독일 ICON", model:"icon_seamless"},{name:"미국 GFS", model:"gfs_seamless"},{name:"일본 JMA", model:"jma_seamless"},{name:"캐나다 GEM", model:"gem_seamless"}];
         for (const src of sources) {
             try {
+                addLog(`${src.name} 모델 데이터 요청 중...`);
                 const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}&current=temperature_2m,relative_humidity_2m&models=${src.model}&timezone=auto`);
                 const data = await res.json();
                 if(data.current) {
                     const ah = getAH(data.current.temperature_2m, data.current.relative_humidity_2m);
                     results.push({ name: src.name, t: data.current.temperature_2m, rh: data.current.relative_humidity_2m, ah: ah });
-                    addLog(`${src.name} 수신 완료`, "success");
+                    addLog(`${src.name} 성공: ${data.current.temperature_2m.toFixed(1)}°C / ${data.current.relative_humidity_2m.toFixed(0)}%`, "success");
                 }
-            } catch(e) { addLog(`${src.name} 로드 실패`, "error"); }
+            } catch(e) { addLog(`${src.name} 연결 실패`, "error"); }
         }
 
         if (results.length > 0) {
@@ -222,13 +234,13 @@
                             </div>
                         </td>
                         <td class="cell-center val-num ${getColorClass(maxV)}">${maxV.toFixed(1)}</td>
-                        <td class="cell-left val-num">
-                            ${hasM ? `(<span class="${getColorClass(mRH)}">${mRH.toFixed(1)}</span>)` : ''} %
+                        <td class="cell-left">
+                            ${hasM ? `(<span class="val-num ${getColorClass(mRH)}">${mRH.toFixed(1)}</span>)` : ''} %
                         </td>
                     </tr>`;
             });
-            document.getElementById('update-time').innerText = new Date().toLocaleTimeString();
-            addLog("대시보드 업데이트 완료", "success");
+            document.getElementById('update-time').innerText = getTime24();
+            addLog("분석 및 대시보드 업데이트 완료", "success");
         }
     }
 </script>
