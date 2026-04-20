@@ -1,11 +1,9 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/1999/svg" width="48" height="48" viewBox="0 0 48 48">
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+    <path d="M11 30.5A13 13 0 0 0 37 30.5Z" fill="#0066cc"/>
     <path d="M24 6C24 6 11 20 11 30.5A13 13 0 0 0 37 30.5C37 20 24 6 24 6Z" 
           fill="none" 
           stroke="#0066cc" 
           stroke-width="8" 
           stroke-linecap="round" 
           stroke-linejoin="round"/>
-    <path d="M11 30.5A13 13 0 0 0 37 30.5Z" 
-          fill="#0066cc"/>
 </svg>
