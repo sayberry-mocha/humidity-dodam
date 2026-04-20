@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>도담동 습도</title>
+    <style>
+        :root { 
+            --bg: #ffffff; --text: #1d1d1f; --secondary: #86868b; --accent: #0066cc; 
+            --border: #d2d2d7; --table-head: #f5f5f7; 
+            --low: #d4a017; --good: #28a745; --high: #d93025; 
+            --bar-track: #a1a1a6; 
+        }
+        * { box-sizing: border-box; }
+        body { font-family: -apple-system, system-ui, sans-serif; background-color: var(--bg); color: var(--text); margin: 0; padding: 20px; display: flex; justify-content: center; }
+        .container { width: 100%; max-width: 720px; }
+        
+        .header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 1.5rem; border-bottom: 2px solid var(--text); padding-bottom: 10px; }
+        .header h2 { font-size: 1.4rem; margin: 0; letter-spacing: -0.5px; }
+        .header-info { text-align: right; }
+        .version { font-size: 0.7rem; color: var(--secondary); display: block; font-family: monospace; }
+        .timestamp { font-size: 0.75rem; color: var(--secondary); font-weight: bold; }
+
+        .input-section { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 1rem; }
+        input { 
+            flex: 1; min-width: 80px; padding: 12px; 
+            border: 1px solid var(--border); border-radius: 8px; 
+            font-size: 0.95rem; text-align: center;
+        }
+        input::placeholder { text-align: center; }
+        button { flex: 0.6; min-width: 70px; padding: 12px; background: var(--accent); color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 1rem; }
+
+        #results-area { display: none; }
+        h3 { font-size: 0.9rem; font-weight: 700; margin: 2rem 0 10px 0; color: var(--secondary); }
+        
+        table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; table-layout: fixed; }
+        th, td { 
+            padding: 12px 4px; border-bottom: 1px solid var(--border); 
+            font-size: 0.82rem; line-height: 1; white-space: nowrap; vertical-align: middle;
+        }
+        th { background-color: var(--table-head); font-weight: 600; text-align: center; }
+
+        #outdoor-table td { text-align: center; }
+        .cell-center { text-align: center; }
+        .cell-left { text-align: left; padding-left: 5px; }
+        .val-num { font-weight: 700; font-variant-numeric: tabular-nums; }
+
+        .bar-outer { 
+            position: relative; width: 100%; height: 18px; 
+            display: flex; align-items: center; 
+        }
+        .bar-outer::before {
+            content: ''; position: absolute; left: 0; width: 100%; height: 6px; 
+            background: var(--bar-track); border-radius: 3px;
+        }
+        .bar-fill { position: absolute; height: 100%; top: 0; z-index: 1; border-radius: 4px; }
+        .manual-line { 
+            position: absolute; width: 2px; height: 22px; background: #000; 
+            top: 50%; transform: translateY(-50%); z-index: 5; 
+        }
+
+        .val-low { color: var(--low); } .val-good { color: var(--good); } .val-high { color: var(--high); }
+        #debug-log { display: none; margin-top: 30px; padding: 15px; background: #1e1e1e; color: #adbac7; font-family: monospace; font-size: 0.7rem; border-radius: 8px; max-height: 180px; overflow-y: auto; line-height: 1.5; }
+        .log-success { color: #51cf66; } .log-error { color: #ff6b6b; } .log-info { color: #4dabf7; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <h2>도담동 습도</h2>
+        <div class="header-info">
+            <span class="version">v0.1.0</span>
+            <div id="update-time" class="timestamp">READY</div>
+        </div>
+    </div>
+
+    <div class="input-section">
+        <input type="number" id="manual-temp" step="0.1" placeholder="온도">
+        <input type="number" id="manual-humid" step="1" placeholder="습도">
+        <button onclick="startCalculation()">시작</button>
+    </div>
+
+    <div id="results-area">
+        <section>
+            <h3>실외</h3>
+            <table id="outdoor-table">
+                <colgroup>
+                    <col style="width: 120px;">
+                    <col style="width: auto;">
+                    <col style="width: auto;">
+                    <col style="width: auto;">
+                </colgroup>
+                <thead>
+                    <tr><th>출처</th><th>온도</th><th>습도</th><th>수분량</th></tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </section>
+
+        <section>
+            <h3>실내</h3>
+            <table id="indoor-table">
+                <colgroup>
+                    <col style="width: 50px;">
+                    <col style="width: 45px;">
+                    <col style="width: auto;">
+                    <col style="width: 45px;">
+                    <col id="col-manual-width" style="width: 20px;"> </colgroup>
+                <thead>
+                    <tr><th>온도</th><th colspan="4">예상 상대 습도</th></tr>
+                </thead>
+                <tbody id="indoor-table-body"></tbody>
+            </table>
+        </section>
+    </div>
+    <div id="debug-log"></div>
+</div>
+
+<script>
+    const LAT = 36.515, LON = 127.261;
+    function addLog(msg, type='') {
+        const log = document.getElementById('debug-log');
+        log.style.display = 'block';
+        const entry = document.createElement('div');
+        entry.className = type ? 'log-'+type : '';
+        entry.innerText = `[${new Date().toLocaleTimeString()}] ${msg}`;
+        log.prepend(entry);
+    }
+
+    function getAH(T, RH) {
+        const es = 6.112 * Math.exp((17.67 * T) / (T + 243.5));
+        return (216.7 * (es * RH / 100)) / (T + 273.15);
+    }
+    function getRH(T, AH) {
+        const es = 6.112 * Math.exp((17.67 * T) / (T + 243.5));
+        return ((AH * (T + 273.15)) / 216.7) / es * 100;
+    }
+    function getColorClass(v) { return v < 40 ? 'val-low' : (v <= 60 ? 'val-good' : 'val-high'); }
+    function clamp(v) { return Math.max(20, Math.min(80, v)); }
+
+    function getFillGradient(min, max) {
+        const width = max - min;
+        if (width <= 0) return getColorClass(min) === 'val-low' ? 'var(--low)' : (getColorClass(min) === 'val-good' ? 'var(--good)' : 'var(--high)');
+        const stops = [];
+        if (min < 40 && max > 40) {
+            const p = ((40 - min) / width) * 100;
+            stops.push(`var(--low) 0% ${p}%`, `var(--good) ${p}%`);
+        } else if (max <= 40) return 'var(--low)';
+        if (min < 60 && max > 60) {
+            const p = ((60 - min) / width) * 100;
+            if (min < 40) {
+                const p40 = ((40 - min) / width) * 100;
+                stops.push(`var(--good) ${p40}% ${p}%`, `var(--high) ${p}%`);
+            } else { stops.push(`var(--good) 0% ${p}%`, `var(--high) ${p}%`); }
+        } else if (min >= 40 && max <= 60) return 'var(--good)';
+        else if (min >= 60) return 'var(--high)';
+        return stops.length ? `linear-gradient(to right, ${stops.join(', ')})` : (min < 40 ? 'var(--low)' : (min <= 60 ? 'var(--good)' : 'var(--high)'));
+    }
+
+    async function startCalculation() {
+        const tIn = document.getElementById('manual-temp'), hIn = document.getElementById('manual-humid');
+        const mTemp = parseFloat(tIn.value), mHumid = parseFloat(hIn.value);
+        const hasM = !isNaN(mTemp) && !isNaN(mHumid);
+        tIn.value = ''; hIn.value = '';
+        
+        // 단위 열 폭 상향 조절
+        document.getElementById('col-manual-width').style.width = hasM ? "65px" : "20px";
+
+        const outBody = document.querySelector('#outdoor-table tbody'), inBody = document.getElementById('indoor-table-body');
+        outBody.innerHTML = ''; inBody.innerHTML = '';
+        document.getElementById('results-area').style.display = 'block';
+        
+        addLog("기상 분석 프로세스 시작...", "info");
+        let results = [], manualAH = null;
+        if(hasM) {
+            manualAH = getAH(mTemp, mHumid);
+            results.push({ name: "수동", t: mTemp, rh: mHumid, ah: manualAH });
+            addLog(`수동 측정값 로드: ${mTemp}°C / ${mHumid}%`, "success");
+        }
+
+        const sources = [{name:"종합 최적값", model:"best_match"},{name:"독일 ICON", model:"icon_seamless"},{name:"미국 GFS", model:"gfs_seamless"},{name:"일본 JMA", model:"jma_seamless"},{name:"캐나다 GEM", model:"gem_seamless"}];
+        for (const src of sources) {
+            try {
+                const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}&current=temperature_2m,relative_humidity_2m&models=${src.model}&timezone=auto`);
+                const data = await res.json();
+                if(data.current) {
+                    const ah = getAH(data.current.temperature_2m, data.current.relative_humidity_2m);
+                    results.push({ name: src.name, t: data.current.temperature_2m, rh: data.current.relative_humidity_2m, ah: ah });
+                    addLog(`${src.name} 수신 완료`, "success");
+                }
+            } catch(e) { addLog(`${src.name} 로드 실패`, "error"); }
+        }
+
+        if (results.length > 0) {
+            results.sort((a,b) => b.ah - a.ah);
+            outBody.innerHTML = results.map(r => `<tr><td>${r.name}</td><td>${r.t.toFixed(1)}°C</td><td>${r.rh.toFixed(0)}%</td><td>${r.ah.toFixed(2)}g/m³</td></tr>`).join('');
+            
+            const allAHs = results.map(r => r.ah);
+            [22, 24, 26, 28].forEach(targetT => {
+                const rhR = allAHs.map(ah => getRH(targetT, ah));
+                const minV = Math.min(...rhR), maxV = Math.max(...rhR);
+                const mRH = hasM ? getRH(targetT, manualAH) : null;
+
+                const left = (clamp(minV) - 20) / 60 * 100;
+                const width = (clamp(maxV) - clamp(minV)) / 60 * 100;
+                
+                let manualStyle = "";
+                if(hasM) {
+                    const mPos = (clamp(mRH) - 20) / 60 * 100;
+                    manualStyle = mPos === 100 ? "left: calc(100% - 2px);" : (mPos === 0 ? "left: 0;" : `left: ${mPos}%; transform: translate(-50%, -50%);`);
+                }
+
+                inBody.innerHTML += `
+                    <tr>
+                        <td class="cell-center">${targetT}°C</td>
+                        <td class="cell-center val-num ${getColorClass(minV)}">${minV.toFixed(1)}</td>
+                        <td>
+                            <div class="bar-outer">
+                                <div class="bar-fill" style="left:${left}%; width:${width}%; background:${getFillGradient(clamp(minV), clamp(maxV))}"></div>
+                                ${hasM ? `<div class="manual-line" style="${manualStyle}"></div>` : ''}
+                            </div>
+                        </td>
+                        <td class="cell-center val-num ${getColorClass(maxV)}">${maxV.toFixed(1)}</td>
+                        <td class="cell-left val-num">
+                            ${hasM ? `(<span class="${getColorClass(mRH)}">${mRH.toFixed(1)}</span>)` : ''} %
+                        </td>
+                    </tr>`;
+            });
+            document.getElementById('update-time').innerText = new Date().toLocaleTimeString();
+            addLog("대시보드 업데이트 완료", "success");
+        }
+    }
+</script>
+</body>
+</html>
