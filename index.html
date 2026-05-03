@@ -54,13 +54,13 @@
     <div class="header">
         <h2>도담동 습도</h2>
         <div class="header-info">
-            <span class="version">v0.1.5</span>
+            <span class="version">v0.1.6</span>
             <div id="update-time" class="timestamp">READY</div>
         </div>
     </div>
     <div class="input-section">
-        <input type="number" id="manual-temp" step="0.1" inputmode="decimal" placeholder="온도">
-        <input type="number" id="manual-humid" step="1" inputmode="numeric" placeholder="습도" onblur="startCalculation()">
+        <input type="number" id="manual-temp" step="0.1" inputmode="decimal" placeholder="온도" oninput="if(this.value.length >= 2) document.getElementById('manual-humid').focus()">
+        <input type="number" id="manual-humid" step="1" inputmode="numeric" placeholder="습도" onblur="startCalculation()" oninput="if(this.value.length >= 2) this.blur()">
         <button onclick="startCalculation()">시작</button>
     </div>
     <div id="results-area">
@@ -143,7 +143,7 @@
         document.getElementById('results-area').style.display = 'block';
 
         addLog("--------------------------------", "info");
-        addLog("v0.1.5 분석 시퀀스 시작", "info");
+        addLog("v0.1.6 분석 시퀀스 시작", "info");
         
         let results = [], manualAH = null;
         if(hasM) {
